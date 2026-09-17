@@ -12,11 +12,17 @@ import 'dotenv/config';
 // ------------------------------------------------------------------
 // SERVIDOR WEB DUMMY (REQUERIDO PARA RENDER)
 // ------------------------------------------------------------------
-const app = express();
-const PORT = process.env.PORT || 10000;
-app.get('/', (req, res) => res.send('⚡ ZYON-FVS ONLINE EN EL BARRIO ⚡'));
-app.listen(PORT, () => console.log(`[SERVER] Escuchando en el puerto ${PORT}`));
+const express = require('express')
+const app = express()
+const port = process.env.PORT || 4000
 
+app.get('/', (req, res) => {
+  res.send('⚡ ZYON-FVS ONLINE EN EL BARRIO ⚡ ' )
+})
+
+app.listen(port, () => {
+  console.log(`[SERVER] Escuchando en el puerto  ${port}`)
+})
 // ------------------------------------------------------------------
 // CONFIGURACIÓN DE IA & PROMPT
 // ------------------------------------------------------------------
