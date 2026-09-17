@@ -88,7 +88,7 @@ async function getEfemerides() {
   const dd = hoy.format('DD');
 
   const res = await fetch(`https://es.wikipedia.org/api/rest_v1/feed/onthisday/all/${mm}/${dd}`, {
-    headers: { 'User-Agent': 'ZYON-FVS-Bot/1.0 (contacto: tu-correo@ejemplo.com)' }
+    headers: { 'User-Agent': 'ZYON-FVS-Bot/1.0 (contacto: Zyon7ago@gmail.com)' }
   });
 
   if (!res.ok) throw new Error(`Wikipedia API respondió ${res.status}`);
