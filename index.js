@@ -367,3 +367,180 @@ async function startBot() {
         const from = msg.key.remoteJid;
         const isGroup = from.endsWith('@g.us');
         const sender = msg.key.participant
+        const isGroup = from.endsWith('@g.us');
+        const sender = msg.key.participant || from;
+        const body = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+
+        if (!body) return;
+
+        const prefix = db.prefijo || '!';
+        const prefixEsc = escapeRegExp(prefix);
+
+        // --- MUTE ---
+        if (db.mutes.includes(sender)) {
+          await sock.sendMessage(from, { delete: msg.key });
+          return;
+        }
+
+        // --- CONTADORES ---
+        const userData = getUserData(sender);
+        userData.mensajes += 1;
+        const type = Object.keys(msg.message)[0];
+        if (['documentMessage', 'audioMessage', 'videoMessage'].includes(type) && !msg.message.audioMessage?.ptt) {
+          userData.aportes += 1;
+          if (userData.advInactivo > 0) userData.advInactivo -= 1;
+        }
+        saveDB();
+
+        // --- META DEL GRUPO ---
+        let groupMetadata;
+        try { groupMetadata = await sock.groupMetadata(from); } catch { return; }
+        const participants = groupMetadata.participants;
+        const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+        const isBotAdmin = participants.find(p => p.id === botId)?.admin !== null;
+        const isAdmin = participants.find(p => p.id === sender)?.admin !== null;
+        const isImmune = db.inmunes.includes(sender);
+
+        // --- ANTI LINK (FIX: regex sin /g) ---
+        const linkRegex = /(chat\.whatsapp\.com\/[A-Za-z0-9]|https?:\/\/[^\s]+)/i; // SIN LA 'g'
+        if (db.antilink.activo && linkRegex.test(body) && !isAdmin && !isImmune && isBotAdmin) {
+          if (db.antilink.maxAdv > 0) {
+            userData.advAntilink += 1;
+            saveDB();
+            if (userData.advAntilink >= db.antilink.maxAdv) {
+              await sock.groupParticipantsUpdate(from, [sender], 'remove');
+              await sock.sendMessage(from, { text: `🚫 @${sender.split('@')[0]} EXPULSADO por exceso de enlaces.`, mentions: [sender] });
+            } else {
+              await sock.sendMessage(from, { text: `⚠️ @${sender.split('@')[0]}, prohibido enlaces (${userData.advAntilink}/${db.antilink.maxAdv})`, mentions: [sender] });
+            }
+          } else {
+            await sock.groupParticipantsUpdate(from, [sender], 'remove');
+          }
+          return; // STOP AQUÍ
+        }
+
+        // --- IA (GROQ) ---
+        const iaTrigger = new RegExp(`^${prefixEsc}(ia|zyon|gemini|chatgpt)\\s+`, 'i');
+        if (iaTrigger.test(body)) {
+          const prompt = body.replace(iaTrigger, '').trim();
+          if (!prompt) {
+             await sock.sendMessage(from, { text: `🤖 Oe mano, escribe algo después del comando. Ej: ${prefix}ia como estás?`, quoted: msg });
+             return;
+          }
+          try {
+            const reply = await askZyon(prompt);
+            await sock.sendMessage(from, { text: reply }, { quoted: msg });
+          } catch (e) {
+            console.error('[IA ERROR]', e.message);
+            await sock.sendMessage(from, { text: `⚡ ¡Ta mare causa! Se cayeron los circuitos de la IA.`, quoted: msg });
+          }
+          return;
+        }
+
+        // --- MENU ---
+        if (new RegExp(`^${prefixEsc}menu$`, 'i').test(body.trim())) {
+          await sock.sendMessage(from, { text: buildMenuText(prefix) }, { quoted: msg });
+          return;
+        }
+
+        // --- EFEMÉRIDES ---
+        if (new RegExp(`^${prefixEsc}(efemerides|hoy|efemeride|dia)$`, 'i').test(body.trim())) {
+          try {
+            const { texto, imagenUrl } = await getEfemerides();
+            if (imagenUrl) {
+              try {
+                await sock.sendMessage(from, { image: { url: imagenUrl }, caption: texto }, { quoted: msg });
+              } catch (imgErr) {
+                await sock.sendMessage(from, { text: texto }, { quoted: msg });
+              }
+            } else {
+              await sock.sendMessage(from, { text: texto }, { quoted: msg });
+            }
+          } catch (e) {
+            await sock.sendMessage(from, { text: `⚡ Oe causa, no pude jalar las efemérides de hoy.`, quoted: msg });
+          }
+          return;
+        }
+
+        // --- STICKER ---
+        if (new RegExp(`^${prefixEsc}sticker$`, 'i').test(body.trim())) {
+          const contextInfo = msg.message.extendedTextMessage?.contextInfo;
+          const quoted = contextInfo?.quotedMessage;
+          if (!quoted || !quoted.imageMessage) {
+            await sock.sendMessage(from, { text: `⚠️ Oe mano, responde (cita) una *imagen* con ${prefix}sticker pe.`, quoted: msg });
+            return;
+          }
+          try {
+            const fakeMsg = { key: { remoteJid: from, id: contextInfo.stanzaId, participant: contextInfo.participant }, message: quoted };
+            const buffer = await downloadMediaMessage(fakeMsg, 'buffer', {});
+            const webpBuffer = await sharp(buffer).resize(512, 512, { fit: 'inside' }).webp().toBuffer();
+            await sock.sendMessage(from, { sticker: webpBuffer }, { quoted: msg });
+          } catch (e) {
+            await sock.sendMessage(from, { text: `⚡ ¡Ta mare causa! No pude hacer el sticker.`, quoted: msg });
+          }
+          return;
+        }
+
+        // --- COMANDOS ADMIN (SOLO SI EMPIEZA CON PREFIJO Y ES ADMIN) ---
+        if (!body.startsWith(prefix) || !isAdmin) return;
+
+        const args = body.slice(prefix.length).trim().split(/ +/);
+        const command = args.shift().toLowerCase();
+        const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || msg.message.extendedTextMessage?.contextInfo?.participant;
+
+        switch (command) {
+          case 'kick':
+            if (mentioned && isBotAdmin) await sock.groupParticipantsUpdate(from, [mentioned], 'remove');
+            break;
+          case 'add':
+            if (args[0] && isBotAdmin) {
+              const num = args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+              await sock.groupParticipantsUpdate(from, [num], 'add').catch(e => console.error('[ADD ERROR]', e));
+            }
+            break;
+          case 'promote':
+            if (mentioned && isBotAdmin) await sock.groupParticipantsUpdate(from, [mentioned], 'promote');
+            break;
+          case 'demote':
+            if (mentioned && isBotAdmin) await sock.groupParticipantsUpdate(from, [mentioned], 'demote');
+            break;
+          case 'mute':
+            if (mentioned && !db.mutes.includes(mentioned)) {
+              db.mutes.push(mentioned);
+              saveDB();
+              await sock.sendMessage(from, { text: `🔇 Usuario silenciado.`, quoted: msg });
+            }
+            break;
+          case 'unmute':
+            if (mentioned) {
+              db.mutes = db.mutes.filter(id => id !== mentioned);
+              saveDB();
+              await sock.sendMessage(from, { text: `🔊 Usuario desmuteado.`, quoted: msg });
+            }
+            break;
+          case 'tagall':
+            let textAll = `📢 *LLAMADO GENERAL*\n\n${args.join(' ')}\n\n`;
+            participants.forEach(p => textAll += `@${p.id.split('@')[0]}\n`);
+            await sock.sendMessage(from, { text: textAll, mentions: participants.map(p => p.id) });
+            break;
+          case 'hidetag':
+            await sock.sendMessage(from, { text: args.join(' '), mentions: participants.map(p => p.id) });
+            break;
+          case 'link':
+            if (isBotAdmin) {
+              const code = await sock.groupInviteCode(from);
+              await sock.sendMessage(from, { text: `🔗 https://chat.whatsapp.com/${code}` });
+            }
+            break;
+          case 'activos':
+            let actTxt = `📊 *USUARIOS ACTIVOS*\n\n`;
+            Object.entries(db.usuarios).sort((a, b) => b[1].mensajes - a[1].mensajes).forEach(([jid, d]) => {
+              if (d.mensajes > 0) actTxt += `@${jid.split('@')[0]}: ${d.mensajes} msgs\n`;
+            });
+            await sock.sendMessage(from, { text: actTxt, mentions: Object.keys(db.usuarios) });
+            break;
+          case 'inactivos':
+            const inactive = participants.filter(p => (db.usuarios[p.id]?.mensajes || 0) === 0).map(p => p.id);
+            const inactTxt = `😴 *INACTIVOS (0 MSGS)*: ${inactive.length}\n\n`;
+            inactive.forEach(id => inactTxt += `@${id.split('@')[0]}\n`);
+            await sock.sendMessage(from, { text: inactTxt, mentions: inactive });
