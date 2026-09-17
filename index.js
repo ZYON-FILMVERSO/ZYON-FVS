@@ -544,3 +544,73 @@ async function startBot() {
             const inactTxt = `😴 *INACTIVOS (0 MSGS)*: ${inactive.length}\n\n`;
             inactive.forEach(id => inactTxt += `@${id.split('@')[0]}\n`);
             await sock.sendMessage(from, { text: inactTxt, mentions: inactive });
+            await sock.sendMessage(from, { text: inactTxt, mentions: inactive });
+            break;
+          case 'aportes':
+            let apTxt = `🎁 *APORTES*\n\n`;
+            Object.entries(db.usuarios).sort((a, b) => b[1].aportes - a[1].aportes).forEach(([jid, d]) => {
+              if (d.aportes > 0) apTxt += `@${jid.split('@')[0]}: ${d.aportes} aportes\n`;
+            });
+            await sock.sendMessage(from, { text: apTxt, mentions: Object.keys(db.usuarios) });
+            break;
+          case 'inmunidad':
+            if (mentioned && !db.inmunes.includes(mentioned)) {
+              db.inmunes.push(mentioned);
+              saveDB();
+              await sock.sendMessage(from, { text: `🛡️ @${mentioned.split('@')[0]} ahora es INMUNE.`, mentions: [mentioned] });
+            }
+            break;
+          case 'quitarinmunidad':
+          case 'delinmunidad':
+            if (mentioned) {
+              db.inmunes = db.inmunes.filter(id => id !== mentioned);
+              saveDB();
+              await sock.sendMessage(from, { text: `⚔️ Inmunidad quitada a @${mentioned.split('@')[0]}.`, mentions: [mentioned] });
+            }
+            break;
+          case 'prefix':
+          case 'setprefix':
+            if (args[0]) {
+              db.prefijo = args[0];
+              saveDB();
+              await sock.sendMessage(from, { text: `✅ Prefijo cambiado a: ${args[0]}` });
+            } else {
+              await sock.sendMessage(from, { text: `El prefijo actual es: ${prefix}` });
+            }
+            break;
+        }
+      } catch (err) {
+        console.error('[MSG ERROR]', err.message);
+      }
+    }
+  });
+}
+
+// ==================================================================
+// TAREAS AUTOMÁTICAS
+// ==================================================================
+cron.schedule('0 0 * * 0', () => {
+  db.usuarios = {};
+  saveDB();
+  console.log('[CRON] Contadores reiniciados (domingo 00:00)');
+});
+
+// ==================================================================
+// ARRANQUE + CIERRE LIMPIO EN RENDER
+// ==================================================================
+process.on('unhandledRejection', (err) => console.error('[UNHANDLED]', err));
+process.on('uncaughtException', (err) => console.error('[EXCEPTION]', err));
+
+['SIGINT', 'SIGTERM'].forEach(sig => {
+  process.on(sig, () => {
+    console.log(`[SHUTDOWN] Recibido ${sig}, cerrando...`);
+    shuttingDown = true;
+    clearTimeout(reconnectTimer);
+    process.exit(0); // sale rápido para que Render no mande SIGKILL
+  });
+});
+
+startBot().catch(e => {
+  console.error('[FATAL] No se pudo iniciar el bot:', e);
+  setTimeout(startBot, 10000);
+});
