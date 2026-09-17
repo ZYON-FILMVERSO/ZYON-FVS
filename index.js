@@ -365,7 +365,6 @@ async function startBot() {
         if (msg.key.remoteJid === 'status@broadcast') continue;
 
         const from = msg.key.remoteJid;
-        const sender = msg.key.participant
         const isGroup = from.endsWith('@g.us');
         const sender = msg.key.participant || from;
         const body = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
