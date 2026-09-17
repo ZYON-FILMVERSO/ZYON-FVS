@@ -274,7 +274,7 @@ async function startBot() {
     const isImmune = db.inmunes.includes(sender);
 
     // Antilink
-    const linkRegex = /(chat\.whatsapp\.com\/[A-Za-z0-9]|https?:\/\/[^\s]+)/gi;
+    const linkRegex = /(chat\.whatsapp\.com\/[A-Za-z0-9]|https?:\/\/[^\s]+)/i;
     if (db.antilink.activo && linkRegex.test(body) && !isAdmin && !isImmune) {
       if (isBotAdmin) await sock.sendMessage(from, { delete: msg.key });
 
