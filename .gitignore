@@ -3,3 +3,5 @@ node_modules/
 data/
 auth_info_baileys/
 database.json
+npm-debug.log*
+.DS_Store
