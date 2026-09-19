@@ -1,6 +1,5 @@
 import Baileys from '@whiskeysockets/baileys';
 const { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage } = Baileys;
-} from "@whiskeysockets/baileys": "6.7.21",
 import pino from 'pino';
 import fs from 'fs';
 import cron from 'node-cron';
