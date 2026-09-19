@@ -1,23 +1,15 @@
+import fs from "fs"
 import config from "../core/config.js"
 export async function cmdHelp(sock, grupoId) {
-  await sock.sendMessage(grupoId, {
-    text: `
-╭─ ${config.BOT_NAME} ─╮
-📜 *MENU EFEMÉRIDES*
+  const menuPath = "./src/assets/menu.jpg"
+  const logoPath = "./src/assets/logo.jpg"
+  const imgPath = fs.existsSync(menuPath)? menuPath : (fs.existsSync(logoPath)? logoPath : null)
 
-*Para todos:*
-• hoy - Efeméride de hoy
-• dia - Efeméride random
-• efemerides - Efeméride al azar con foto/video
+  const texto = `╭─ ${config.BOT_NAME} ─╮\n📜 MENU\n\n• hoy / dia / efemerides\n• efemerides on/off (admin)\n• setimg (reply img) - solo owner\n• addowner 519... - solo owner\n• listowner\n╰─ ${config.BOT_NAME} ─╯`
 
-*Solo admins:*
-• efemerides on - Activa cada hora 6am-12am
-• efemerides off - Desactiva
-
-📹 Si la efeméride tiene video, se envía video.
-📜 Textos largos y elegantes de Wikipedia ES
-
-⚡ ${config.BOT_NAME} ⚡
-╰─────────────╯`.trim()
-  })
+  if (imgPath) {
+    await sock.sendMessage(grupoId, { image: { url: imgPath }, caption: texto })
+  } else {
+    await sock.sendMessage(grupoId, { text: texto })
+  }
 }
