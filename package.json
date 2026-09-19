@@ -1,22 +1,14 @@
 {
   "name": "zyon-fvs",
-  "version": "2.0.0",
-  "description": "ZYON-FVS™ - Bot Administrativo de WhatsApp",
+  "version": "5.0.0",
   "type": "module",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
+  "scripts": { "start": "node index.js" },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.21",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+    "@whiskeysockets/baileys": "^6.7.8",
+    "pino": "^9.0.0",
     "moment-timezone": "^0.5.45",
-    "node-cron": "^3.0.3",
-    "node-fetch": "^3.3.2",
-    "pino": "^8.17.0"
+    "axios": "^1.6.0",
+    "mongoose": "^8.0.0"
   }
 }
