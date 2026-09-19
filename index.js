@@ -1,5 +1,5 @@
-import Baileys from '@whiskeysockets/baileys';
-const { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = Baileys;
+import * as BaileysLib from '@whiskeysockets/baileys';
+const { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = BaileysLib;
 import pino from 'pino';
 import fs from 'fs';
 import cron from 'node-cron';
