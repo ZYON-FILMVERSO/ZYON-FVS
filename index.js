@@ -3,7 +3,7 @@ import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
   downloadMediaMessage
-} from '@whiskeysockets/baileys';
+} from "@whiskeysockets/baileys": "6.7.21",
 import pino from 'pino';
 import fs from 'fs';
 import cron from 'node-cron';
