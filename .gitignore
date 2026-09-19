@@ -1,7 +1,3 @@
-node_modules/
-.env
-data/
-auth_info_baileys/
+node_modules
+session
 database.json
-npm-debug.log*
-.DS_Store
