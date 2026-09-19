@@ -1,3 +1,7 @@
+import { cmdOn, cmdOff, cmdAddOwner, cmdDelOwner, cmdListOwner, cmdSetImg } from "../commands/admin.js"
+import { cmdEfemerides } from "../commands/efemerides.js"
+import { cmdHelp } from "../commands/help.js"
+import { isOwner } from "../utils/isOwner.js"
 import makeWASocket, { useMultiFileAuthState } from "@whiskeysockets/baileys"
 import pino from "pino"
 import { obtenerEfemerideUnica } from "../modules/efemerides.service.js"
