@@ -1,9 +1,0 @@
-{
-  "mutes": [],
-  "inmunes": [],
-  "antilink": { "activo": true, "maxAdv": 3 },
-  "inactivosConfig": { "activo": true, "maxAdv": 3, "maxDias": 7 },
-  "autoAceptar": false,
-  "usuarios": {}
-}
-
