@@ -1,67 +1,107 @@
-import { cmdOn, cmdOff, cmdAddOwner, cmdDelOwner, cmdListOwner, cmdSetImg } from "../commands/admin.js"
+import makeWASocket, { useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys"
+import { Boom } from "@hapi/boom"
+import fs from "fs"
+import config from "./config.js"
+import { getAuthOptions } from "./connection.js"
+import { logger } from "../utils/logger.js"
+import { iniciarCron } from "../cron/autoSender.js"
+
+// Comandos
 import { cmdEfemerides } from "../commands/efemerides.js"
 import { cmdHelp } from "../commands/help.js"
-import { isOwner } from "../utils/isOwner.js"
-import makeWASocket, { useMultiFileAuthState } from "@whiskeysockets/baileys"
-import pino from "pino"
-import { obtenerEfemerideUnica } from "../modules/efemerides.service.js"
-import { formatearEfemeride } from "../modules/formatter.js"
-import { getHistorial, addHistorial, setGrupoActivo } from "../modules/history.manager.js"
-import { iniciarCron } from "../cron/autoSender.js"
-import config from "./config.js"
+import { cmdOn, cmdOff, cmdAddOwner, cmdDelOwner, cmdListOwner, cmdSetImg } from "../commands/admin.js"
 
 export async function iniciarBot() {
-  const { state, saveCreds } = await useMultiFileAuthState("./session")
-  const sock = makeWASocket({ auth: state, logger: pino({ level: "silent" }) })
+  const { state, saveCreds } = await useMultiFileAuthState("session")
+  const { auth } = getAuthOptions(state)
+
+  const sock = makeWASocket({
+    auth,
+    printQRInTerminal: true,
+    defaultQueryTimeoutMs: undefined,
+    browser: [config.BOT_NAME, "Chrome", "1.0"]
+  })
+
   sock.ev.on("creds.update", saveCreds)
 
-  sock.ev.on("connection.update", ({ connection }) => {
+  // Conexión
+  sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
+    if (connection === "close") {
+      const shouldReconnect = (lastDisconnect?.error instanceof Boom? lastDisconnect.error.output.statusCode : 0)!== DisconnectReason.loggedOut
+      logger.error(`Conexión cerrada. Reconectando: ${shouldReconnect}`)
+      if (shouldReconnect) iniciarBot()
+    }
     if (connection === "open") {
-      console.log(`✅ ${config.BOT_NAME} CONECTADO`)
+      logger.success(`${config.BOT_NAME} CONECTADO ✅`)
+
+      // Poner logo como foto de perfil
+      try {
+        if (fs.existsSync("./src/assets/logo.jpg")) {
+          await sock.updateProfilePicture(sock.user.id, { url: "./src/assets/logo.jpg" })
+          logger.success("Logo ZYON-FVS™ puesto como perfil")
+        }
+      } catch (e) {
+        logger.error("No se pudo poner logo: " + e.message)
+      }
+
       iniciarCron(sock)
     }
   })
 
+  // Escuchar mensajes
   sock.ev.on("messages.upsert", async ({ messages }) => {
-    const m = messages[0]
-    if (!m.message) return
-    const text = (m.message.conversation || m.message.extendedTextMessage?.text || "").toLowerCase().trim()
-    const grupoId = m.key.remoteJid
-    const esGrupo = grupoId.endsWith("@g.us")
+    try {
+      const m = messages[0]
+      if (!m.message) return
+      if (m.key.fromMe) return
 
-    // Comandos admin
-    if (text === "efemerides on" || text === "efemérides on") {
-      if (!esGrupo) return
-      setGrupoActivo(grupoId, true)
-      await sock.sendMessage(grupoId, { text: `✅ *${config.BOT_NAME}*\n\n⏰ Efemérides automáticas ACTIVADAS\n🕕 De 6am a 12am cada 1 hora\n📜 Sin repetir` })
-      return
-    }
-    if (text === "efemerides off" || text === "efemérides off") {
-      if (!esGrupo) return
-      setGrupoActivo(grupoId, false)
-      await sock.sendMessage(grupoId, { text: `❌ *${config.BOT_NAME}*\n\nEfemérides automáticas DESACTIVADAS` })
-      return
-    }
+      const grupoId = m.key.remoteJid
+      const isGroup = grupoId.endsWith("@g.us")
+      const senderId = m.key.participant || m.key.remoteJid
 
-    // Comandos usuarios: hoy, dia, efemerides
-    if (["hoy","dia","día","efemerides","efemérides"].includes(text)) {
-      await sock.sendMessage(grupoId, { text: "🔍 Buscando en Wikipedia..." })
-      const historial = getHistorial(grupoId)
-      const efem = await obtenerEfemerideUnica(historial)
-      if (!efem) return sock.sendMessage(grupoId, { text: "No encontré efeméride, intenta de nuevo" })
+      // Extraer texto
+      const msgType = Object.keys(m.message)[0]
+      let text = ""
+      if (msgType === "conversation") text = m.message.conversation
+      else if (msgType === "extendedTextMessage") text = m.message.extendedTextMessage.text
+      else if (msgType === "imageMessage") text = m.message.imageMessage.caption || ""
+      else return
 
-      const texto = formatearEfemeride(efem)
+      text = text.toLowerCase().trim()
+      if (!text) return
 
-      if (efem.mediaUrl) {
-        if (efem.isVideo) {
-          await sock.sendMessage(grupoId, { video: { url: efem.mediaUrl }, caption: texto })
-        } else {
-          await sock.sendMessage(grupoId, { image: { url: efem.mediaUrl }, caption: texto })
+      const args = text.split(" ")
+      const cmd = args[0].replace(config.PREFIX, "")
+
+      logger.info(`[${grupoId}] ${senderId}: ${text}`)
+
+      // COMANDOS ADMIN - SOLO OWNER Y BOT
+      if (text.startsWith("efemerides on")) { await cmdOn(sock, grupoId); return }
+      if (text.startsWith("efemerides off")) { await cmdOff(sock, grupoId); return }
+
+      if (cmd === "addowner") { await cmdAddOwner(sock, grupoId, senderId, args.slice(1)); return }
+      if (cmd === "delowner") { await cmdDelOwner(sock, grupoId, senderId, args.slice(1)); return }
+      if (cmd === "listowner" || cmd === "owners") { await cmdListOwner(sock, grupoId, senderId); return }
+      if (cmd === "setimg" || cmd === "setmenu") { await cmdSetImg(sock, grupoId, senderId, m); return }
+
+      // COMANDOS NORMALES
+      if (["hoy", "dia", "efemerides", "efemérides", "menu", "help", "ayuda"].includes(cmd)) {
+        if (cmd === "menu" || cmd === "help" || cmd === "ayuda") {
+          await cmdHelp(sock, grupoId)
+          return
         }
-      } else {
-        await sock.sendMessage(grupoId, { text: texto })
+        try {
+          await sock.sendMessage(grupoId, { text: "🔍 *Buscando efeméride en Wikipedia...*" })
+          await cmdEfemerides(sock, grupoId)
+        } catch (e) {
+          logger.error(e.message)
+          await sock.sendMessage(grupoId, { text: "❌ Error al buscar efeméride, intenta de nuevo." })
+        }
+        return
       }
-      addHistorial(grupoId, efem.id)
+
+    } catch (e) {
+      logger.error("Error en messages.upsert: " + e.message)
     }
   })
 }
